@@ -1,0 +1,73 @@
+create view Product_report as 
+with base_query as(
+select
+p.product_key,
+p.product_name,
+p.category,
+p.subcategory,
+p.cost,
+f.order_number,
+f.customer_key,
+f.order_date,
+f.sales_amount,
+f.quantity
+from Gold.fact_sales f
+left join Gold.dim_product p
+on f.product_key=p.product_key
+where order_date is not null)
+,
+--aggregates product --
+product_aggregations as (
+select
+product_key,
+product_name,
+category,
+subcategory,
+cost,
+count(distinct order_number) as total_orders,
+sum(quantity) as total_quantity,
+sum(sales_amount) as total_sales,
+count(distinct customer_key) as total_customers,
+max(order_date) as Last_sale_date,
+min(order_date) as first_sale_date,
+datediff(month,min(order_date),max(order_date)) as lifespan,
+Round(avg(cast(sales_amount as float)/nullif(quantity,0)),1) as avg_selling_price
+from base_query
+group by 
+product_key,
+product_name,
+category,
+subcategory,
+cost
+)
+--Final Analysis
+select
+product_key,
+product_name,
+category,
+subcategory,
+cost,
+last_sale_date,
+datediff(month,last_sale_date,getdate()) as recency_in_months,
+case 
+when total_sales>50000 then 'High-performer' 
+when total_sales>=10000 then 'Mid-range'
+else 'Low-performer'
+end product_segment,
+lifespan,
+Total_orders,
+total_sales
+total_quantity,
+total_customers,
+avg_selling_price,
+---Avg Order Revenue(AOR)
+case
+when total_orders=0 then 0
+else total_sales/total_orders
+end as avg_order_renvenue,
+--Avg Monthly_Revenue
+case 
+when lifespan=0 then total_sales
+else total_sales/lifespan
+end as avg_monthly_renvenue
+from product_aggregations
